@@ -30,7 +30,7 @@ on the NASA submission page and aim to submit hours earlier.
 - [ ] Detailed description: paste from `PROJECT_DESCRIPTION.md`
 - [ ] Final project link (public)
 - [ ] Demo link (public video or slides)
-- [ ] NASA data used: NASA POWER Monthly API, MERRA-2. Before ticking this, open the challenge page's Resources section and check whether the challenge requires a source from its own list and whether NASA POWER or MERRA-2 qualifies. This has not been confirmed. If unsure, ask the organizers.
+- [ ] NASA data used: NASA POWER Monthly API, MERRA-2. The challenge's Resources list (checked 14 November 2026) names Giovanni, Hydrology Time Series, AppEEARS and Climate Data Online; NASA POWER is not named, but MERRA-2 is available through Giovanni. Before ticking this, read the text above the Resources list to confirm it does not require a listed source. If it does, ask the organizers.
 - [ ] References
 - [ ] AI tool declaration: Claude Code
 - [ ] Team member names and roles match the team page

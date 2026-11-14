@@ -94,8 +94,38 @@ If there are fewer than 10 complete years, or every value is identical, or the
 fit is not finite, the app reports "Insufficient data for trend inference" and
 shows no p-value. The fitted line is drawn only across observed years.
 
-As a diagnostic, the app also reports the lag-1 autocorrelation of the residuals.
-It is not used to adjust the results.
+As a diagnostic, the app also reports the lag-1 autocorrelation of the residuals
+(using consecutive years only). It is not used to adjust the results.
+
+## Robust cross-check
+
+The same annual series is analyzed a second way:
+
+| Quantity | Definition |
+|---|---|
+| Theil–Sen slope | median of the slopes between every pair of years (`scipy.stats.theilslopes`), with its 95% confidence interval |
+| Mann–Kendall test | test for a monotonic trend, computed as Kendall's tau between year and annual mean (`scipy.stats.kendalltau`) |
+
+These methods do not assume a straight line or normally distributed errors, and a
+few unusual years affect them much less. Like least squares, they assume the years
+are independent, so serial correlation can still make their p-values optimistic.
+The app states whether the two methods agree on direction and on significance.
+
+Results on 14 November 2026 for `T2M`, 1991–2025:
+
+| Location | Least squares (°C/decade) | Theil–Sen (°C/decade) | Mann–Kendall p |
+|---|---:|---:|---:|
+| Bridgetown, Barbados | +0.315 | +0.308 | < 0.001 |
+| Kingston, Jamaica | +0.220 | +0.200 | < 0.001 |
+| Georgetown, Guyana | +0.258 | +0.239 | < 0.001 |
+| Port of Spain, Trinidad and Tobago | +0.090 | +0.073 | 0.217 |
+| London, United Kingdom | +0.365 | +0.393 | < 0.001 |
+
+## Plain-language explanations
+
+The "Explain this result" panel offers wording for a student, the general public
+or a scientist. The text is produced from fixed templates filled with the computed
+numbers. No AI model is called by the app.
 
 ## Verification performed (14 November 2026)
 

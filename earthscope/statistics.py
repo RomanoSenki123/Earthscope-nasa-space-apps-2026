@@ -113,3 +113,62 @@ def calculate_linear_trend(years, values, min_years: int = config.MIN_YEARS_FOR_
         ci_high=float(fit.slope + tcrit * fit.stderr),
         resid_lag1_autocorr=lag1,
     )
+
+
+@dataclass(frozen=True)
+class RobustTrend:
+    """Rank-based cross-check of the least-squares trend."""
+
+    ok: bool
+    reason: str
+    n: int
+    sen_slope: float | None = None  # Theil-Sen slope, units per year
+    sen_ci_low: float | None = None  # 95% CI, units per year
+    sen_ci_high: float | None = None
+    mk_tau: float | None = None  # Kendall's tau between year and value
+    mk_pvalue: float | None = None  # Mann-Kendall test of no monotonic trend
+
+    @property
+    def sen_slope_per_decade(self) -> float | None:
+        return None if self.sen_slope is None else self.sen_slope * 10
+
+    @property
+    def sen_ci_per_decade(self) -> tuple[float, float] | None:
+        if self.sen_ci_low is None or self.sen_ci_high is None:
+            return None
+        return self.sen_ci_low * 10, self.sen_ci_high * 10
+
+    @property
+    def significant(self) -> bool | None:
+        if not self.ok or self.mk_pvalue is None:
+            return None
+        return self.mk_pvalue < config.SIGNIFICANCE_LEVEL
+
+
+def calculate_robust_trend(years, values, min_years: int = config.MIN_YEARS_FOR_TREND) -> RobustTrend:
+    """Theil-Sen slope and Mann-Kendall test for the same annual series.
+
+    The Theil-Sen slope is the median of the slopes between every pair of years,
+    so a few unusual years move it far less than they move a least-squares line.
+    The Mann-Kendall test is computed as Kendall's tau between year and value
+    (``scipy.stats.kendalltau``); it asks whether values tend to rise or fall
+    over time without assuming a straight line or normally distributed errors.
+    Like least squares, it still assumes the years are independent.
+    """
+    x = np.asarray(years, dtype=float)
+    y = np.asarray(values, dtype=float)
+    if x.shape != y.shape or x.ndim != 1:
+        return RobustTrend(False, "Years and values do not line up.", n=0)
+    n = int(x.size)
+    if not (np.isfinite(x).all() and np.isfinite(y).all()):
+        return RobustTrend(False, "The annual series contains invalid values.", n)
+    if n < min_years:
+        return RobustTrend(False, f"Only {n} complete year(s) are available; at least {min_years} are needed.", n)
+    if np.unique(x).size < 2 or np.ptp(y) == 0:
+        return RobustTrend(False, "The series does not vary, so a rank-based test is undefined.", n)
+
+    slope, _intercept, low, high = stats.theilslopes(y, x, alpha=0.95)
+    tau, pvalue = stats.kendalltau(x, y)
+    if not all(math.isfinite(v) for v in (slope, low, high, tau, pvalue)):
+        return RobustTrend(False, "The robust estimate did not produce finite results.", n)
+    return RobustTrend(True, "", n, float(slope), float(low), float(high), float(tau), float(pvalue))

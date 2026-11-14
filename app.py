@@ -12,10 +12,15 @@ import streamlit as st
 
 from earthscope import config
 from earthscope.charts import trend_figure
-from earthscope.explanations import LIMITATIONS, describe_trend, format_pvalue, format_signed
+from earthscope.explanations import (
+    AUDIENCES, GLOSSARY, LIMITATIONS, describe_agreement, describe_trend,
+    explain_for_audience, format_pvalue, format_signed,
+)
 from earthscope.nasa_power import MonthlyResult, PowerError, fetch_power_monthly
 from earthscope.processing import annual_means
-from earthscope.statistics import TrendResult, calculate_linear_trend
+from earthscope.statistics import (
+    RobustTrend, TrendResult, calculate_linear_trend, calculate_robust_trend,
+)
 
 st.set_page_config(page_title="EarthScope", page_icon="🌍", layout="wide")
 
@@ -26,6 +31,7 @@ class Analysis:
     annual: pd.DataFrame
     dropped: dict[int, int]
     trend: TrendResult
+    robust: RobustTrend
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
@@ -38,12 +44,15 @@ def analyze(loc: config.Location, start: int, end: int, parameter: str) -> Analy
     monthly = load_monthly(loc.name, loc.latitude, loc.longitude, start, end, parameter)
     annual, dropped = annual_means(monthly.data, start, end)
     trend = calculate_linear_trend(annual["year"], annual["annual_mean"])
-    return Analysis(monthly, annual, dropped, trend)
+    robust = calculate_robust_trend(annual["year"], annual["annual_mean"])
+    return Analysis(monthly, annual, dropped, trend, robust)
 
 
 def summary_row(a: Analysis) -> dict:
     t = a.trend
+    r = a.robust
     ci = t.ci_per_decade if t.ok else None
+    rci = r.sen_ci_per_decade if r.ok else None
     return {
         "location": a.monthly.location,
         "latitude": a.monthly.latitude,
@@ -61,6 +70,12 @@ def summary_row(a: Analysis) -> dict:
         "r_squared": t.r_squared if t.ok else None,
         "significant_at_5pct": t.significant,
         "residual_lag1_autocorrelation": t.resid_lag1_autocorr if t.ok else None,
+        "theil_sen_slope_per_decade": r.sen_slope_per_decade if r.ok else None,
+        "theil_sen_ci95_low_per_decade": rci[0] if rci else None,
+        "theil_sen_ci95_high_per_decade": rci[1] if rci else None,
+        "mann_kendall_tau": r.mk_tau if r.ok else None,
+        "mann_kendall_p_value": r.mk_pvalue if r.ok else None,
+        "mann_kendall_significant_at_5pct": r.significant,
         "note": t.reason,
         "source": "NASA POWER monthly API (" + ", ".join(a.monthly.sources) + ")",
         "accessed_utc": a.monthly.accessed_utc,
@@ -200,6 +215,36 @@ for a in analyses:
             f"· coverage {t.first_year}–{t.last_year}"
         )
     st.markdown(describe_trend(t, a.monthly.location, variable.label, rate_unit))
+
+    r = a.robust
+    if t.ok and r.ok:
+        r_low, r_high = r.sen_ci_per_decade
+        st.markdown("**Robust check** (a second method, less sensitive to unusual years)")
+        rcols = st.columns(4)
+        rcols[0].metric(
+            f"Theil–Sen trend ({rate_unit}/decade)", format_signed(r.sen_slope_per_decade),
+            help="Median of the slopes between every pair of years.",
+        )
+        rcols[1].metric(
+            "Mann–Kendall p-value", format_pvalue(r.mk_pvalue),
+            help="Tests for a consistent rise or fall without assuming a straight line.",
+        )
+        rcols[2].metric(
+            "Kendall's τ", f"{r.mk_tau:.2f}",
+            help="From −1 (always falling) to +1 (always rising); 0 means no consistent direction.",
+        )
+        st.caption(
+            f"95% CI for the Theil–Sen slope: {format_signed(r_low)} to {format_signed(r_high)} "
+            f"{rate_unit}/decade. {describe_agreement(t, r)}"
+        )
+
+    with st.expander("Explain this result", expanded=True):
+        audience = st.radio(
+            "Explain it for", AUDIENCES, index=1, horizontal=True,
+            key=f"audience_{a.monthly.location}",
+        )
+        st.write(explain_for_audience(audience, t, r, a.monthly.location, variable.label, rate_unit))
+        st.caption("Written from the computed numbers above using fixed wording; no AI model is involved.")
     if a.dropped:
         listed = ", ".join(f"{y} ({m}/12 months)" for y, m in sorted(a.dropped.items()))
         st.info(f"Years excluded because they lack 12 valid monthly values: {listed}.")
@@ -287,7 +332,8 @@ with st.expander("How we computed the trend"):
 3. An annual mean is the mean of the 12 monthly means, computed **only** for years with all 12 valid months. NASA's own annual entry (month `13`) is not used.
 4. `scipy.stats.linregress` fits annual mean = intercept + slope × year. At least {config.MIN_YEARS_FOR_TREND} complete years are required.
 5. Slope per decade = slope per year × 10. The 95% interval is slope ± t(0.975, n−2) × standard error. The p-value tests whether the slope differs from zero.
-6. All figures shown come from the same fit on the same annual table you can download.
+6. As a cross-check, the same annual values are also analyzed with the Theil–Sen slope (`scipy.stats.theilslopes`) and the Mann–Kendall test (computed as Kendall's tau between year and value, `scipy.stats.kendalltau`). These do not assume a straight line or normally distributed errors, but like least squares they assume the years are independent.
+7. All figures shown come from the same annual table you can download.
 """
     )
     for a in analyses:
@@ -297,6 +343,9 @@ with st.expander("How we computed the trend"):
                 f"{a.trend.resid_lag1_autocorr:.2f} (diagnostic only; values far from 0 "
                 "suggest the p-value and interval are optimistic)."
             )
+
+with st.expander("What do these terms mean?"):
+    st.markdown("\n".join(f"- **{term}:** {meaning}" for term, meaning in GLOSSARY.items()))
 
 with st.expander("Limitations and how to interpret this"):
     st.markdown("\n".join(f"- {item}" for item in LIMITATIONS))

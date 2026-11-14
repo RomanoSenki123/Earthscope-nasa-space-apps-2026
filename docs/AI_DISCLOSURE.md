@@ -17,11 +17,13 @@
 
 **What the team did**
 
-- Chose the challenge and defined the scope, data source, method and scientific framing in the specification.
+- Chose the challenge and set the project's scope and Caribbean focus.
+- Supplied the written specification that the implementation followed.
+- Ran the app locally and inspected the results on screen.
+- Ran an automated code review with CodeRabbit (an AI code-review tool) and directed the fixes for its eight findings.
+- Checked the challenge's resource list against the data source used.
+- Committed and published the code, and prepared the submission.
 
-> **Team lead: before submitting, add what you personally reviewed and tested**
-> (for example: ran the app, checked the results, read the code, recorded the demo).
-> Do not claim review that did not happen.
 
 Synthetic values exist only in `tests/` as clearly labelled fixtures and are never
 displayed by the app.

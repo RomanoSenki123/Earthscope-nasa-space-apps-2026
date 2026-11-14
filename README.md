@@ -47,6 +47,9 @@ Run the tests:
 | Removal of fill values and invalid records, with disclosure | Implemented |
 | Annual means from complete 12-month years only; excluded years listed | Implemented |
 | Linear trend: slope per decade, 95% CI, p-value, R², sample size | Implemented |
+| Robust cross-check: Theil–Sen slope with 95% CI and Mann–Kendall test | Implemented |
+| "Explain this result" for a student, the general public or a scientist (fixed wording, no AI) | Implemented |
+| Glossary of statistical terms | Implemented |
 | Interactive chart of annual means with fitted trend line | Implemented |
 | Two-location comparison chart and table | Implemented |
 | Annual-data CSV and trend-summary CSV downloads | Implemented |
@@ -97,6 +100,7 @@ Program.*
 3. Average the 12 monthly means into an annual mean, only for years with all 12 months.
 4. Fit `annual mean = intercept + slope × year` with `scipy.stats.linregress` (at least 10 complete years).
 5. Report slope × 10 per decade, the 95% interval `slope ± t(0.975, n−2) × SE`, the p-value and R².
+6. Cross-check with the Theil–Sen slope and the Mann–Kendall test, which do not assume a straight line, and state whether the two methods agree.
 
 Full details: [docs/DATA_METHODS.md](docs/DATA_METHODS.md).
 
