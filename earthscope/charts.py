@@ -12,7 +12,7 @@ import plotly.graph_objects as go
 from .statistics import TrendResult
 
 SERIES_TEAL = "#0893A3"  # model-derived annual values
-TREND_CORAL = "#F28C52"  # fitted line with a positive slope
+TREND_CORAL = "#DC6426"  # fitted line with a positive slope (3.6:1 against white)
 TREND_NEUTRAL = "#34465B"  # fitted line with a zero or negative slope
 COMPARE_VIOLET = "#6250D6"  # second location in comparison charts
 INK = "#10233D"
@@ -49,7 +49,7 @@ def _layout(fig: go.Figure, variable_label: str, unit: str) -> go.Figure:
         margin=dict(l=64, r=16, t=48, b=12),
         height=420,
     )
-    fig.update_xaxes(title_text="Year", tickformat="d", nticks=9, showgrid=False, linecolor=GRID, ticks="outside", tickcolor=GRID)
+    fig.update_xaxes(title_text="Year", tickformat="d", nticks=6, tickangle=0, showgrid=False, linecolor=GRID, ticks="outside", tickcolor=GRID)
     # The card heading names the variable, so the axis title stays short and readable.
     fig.update_yaxes(
         title_text=f"Annual mean ({unit})", gridcolor=GRID, zeroline=False, automargin=True,

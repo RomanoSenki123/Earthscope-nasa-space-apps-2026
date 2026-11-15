@@ -16,7 +16,7 @@ import pandas as pd
 import streamlit as st
 
 from earthscope import config
-from earthscope.charts import comparison_figure, trend_figure
+from earthscope.charts import SERIES_TEAL, TREND_CORAL, TREND_NEUTRAL, comparison_figure, trend_figure
 from earthscope.explanations import (
     AUDIENCES, GLOSSARY, LIMITATIONS, describe_agreement, describe_trend,
     explain_for_audience, format_pvalue, format_signed,
@@ -93,9 +93,18 @@ def format_coord(lat: float, lon: float) -> str:
     return f"{abs(lat):.4f}° {'N' if lat >= 0 else 'S'}, {abs(lon):.4f}° {'E' if lon >= 0 else 'W'}"
 
 
-def kpi_card(column, label: str, value: str, note: str) -> None:
-    """One summary card. Values wrap instead of being cut off."""
+ACCENT_POSITIVE = "#187D65"  # result is statistically significant
+ACCENT_CAUTION = "#A96520"  # not significant, or not available
+ACCENT_NAVY = "#0B1736"
+
+
+def kpi_card(column, label: str, value: str, note: str, accent: str) -> None:
+    """One summary card with a thin colour accent. Values wrap instead of being cut off.
+
+    The accent is decoration only: the value and note always carry the meaning in text.
+    """
     with column.container(border=True, height="stretch"):
+        st.html(f'<div style="height:4px;border-radius:4px;background:{accent};"></div>')
         st.caption(label)
         st.html(
             '<div style="font-size:1.45rem;font-weight:700;line-height:1.25;'
@@ -114,11 +123,13 @@ def kpi_row(a: Analysis, rate_unit: str, requested_years: int) -> None:
         kpi_card(
             cols[0], "Estimated trend", f"{format_signed(t.slope_per_decade)} {rate_unit}/decade",
             f"{direction} · least-squares fit to annual means",
+            TREND_CORAL if t.slope > 0 else TREND_NEUTRAL,
         )
         kpi_card(
             cols[2], "95% confidence interval",
             f"{format_signed(low)} to {format_signed(high)}",
             f"{rate_unit}/decade · statistical uncertainty of the fitted trend only",
+            ACCENT_NAVY,
         )
         p_text = format_pvalue(t.pvalue)
         kpi_card(
@@ -126,15 +137,17 @@ def kpi_row(a: Analysis, rate_unit: str, requested_years: int) -> None:
             f"p {p_text}" if p_text[0] in "<>" else f"p = {p_text}",
             "Significant at the 5% level under the model's assumptions" if t.significant
             else "Not statistically significant at the 5% level",
+            ACCENT_POSITIVE if t.significant else ACCENT_CAUTION,
         )
     else:
-        kpi_card(cols[0], "Estimated trend", "N/A", "Insufficient data for trend inference")
-        kpi_card(cols[2], "95% confidence interval", "N/A", "Not available")
-        kpi_card(cols[3], "Statistical significance", "N/A", "Not available")
+        kpi_card(cols[0], "Estimated trend", "N/A", "Insufficient data for trend inference", ACCENT_CAUTION)
+        kpi_card(cols[2], "95% confidence interval", "N/A", "Not available", ACCENT_CAUTION)
+        kpi_card(cols[3], "Statistical significance", "N/A", "Not available", ACCENT_CAUTION)
     span = f"{t.first_year}–{t.last_year}" if t.n else "no complete years"
     kpi_card(
         cols[1], "Period analyzed", f"{t.n} year{'s' if t.n != 1 else ''}",
         f"{span} · complete years only ({t.n} of {requested_years} requested have all 12 months)",
+        SERIES_TEAL,
     )
 
 
@@ -230,6 +243,10 @@ if compare_name != "None":
 context_line = f"{selected[0].name} · {variable.label} · {start_year}–{end_year}"
 st.html(
     f"""
+<style>
+  .es-context {{ text-align: right; }}
+  @media (max-width: 900px) {{ .es-context {{ text-align: left; }} }}
+</style>
 <div style="background:linear-gradient(110deg,#07142D 0%,#0B1736 55%,#123B5C 100%);
             color:#FFFFFF;border-radius:12px;padding:20px 26px;display:flex;flex-wrap:wrap;
             gap:10px 28px;align-items:flex-end;justify-content:space-between;
@@ -240,7 +257,7 @@ st.html(
     <h1 style="margin:2px 0 2px 0;padding:0;font-size:2.3rem;line-height:1.15;color:#FFFFFF;">EarthScope</h1>
     <div style="font-size:1.05rem;color:#E6EEF7;">Understand how our climate is changing.</div>
   </div>
-  <div style="text-align:right;font-size:0.9rem;color:#E6EEF7;">
+  <div class="es-context" style="font-size:0.9rem;color:#E6EEF7;">
     <div style="font-weight:600;color:#FFFFFF;">{html.escape(context_line)}</div>
     <div>Data: NASA POWER · model-derived estimates</div>
   </div>
@@ -271,6 +288,12 @@ if not analyses:
         "substitutes sample or estimated values for NASA data."
     )
     st.stop()
+
+nav = ["[Results](#results)"]
+if len(analyses) > 1:
+    nav.append("[Compare locations](#compare)")
+nav += ["[Download the data](#download)", "[About the data](#about-the-data)", "[Methods & limitations](#methods)"]
+st.markdown("**Jump to:** " + " · ".join(nav))
 
 primary = analyses[0]
 unit = primary.monthly.unit or variable.unit
@@ -321,7 +344,7 @@ else:
         st.markdown(f"**{m.location}**  \n{format_coord(m.latitude, m.longitude)}")
         st.map(
             pd.DataFrame({"lat": [m.latitude], "lon": [m.longitude]}),
-            latitude="lat", longitude="lon", zoom=4, size=20000, color="#F28C52", height=230,
+            latitude="lat", longitude="lon", zoom=4, size=20000, color=TREND_CORAL, height=230,
         )
         st.caption(
             "The marker shows the requested coordinates. Values describe the surrounding "
