@@ -1,17 +1,22 @@
-"""EarthScope — Earth System Trend Detective (Streamlit app).
+"""EarthScope — Ocean Observatory (Streamlit app).
 
 Run with:  streamlit run app.py
+
+This file is presentation only. Data retrieval, cleaning and statistics live in
+the ``earthscope`` package; every number shown here comes from those results.
 """
 
 from __future__ import annotations
 
+import html
+import re
 from dataclasses import dataclass
 
 import pandas as pd
 import streamlit as st
 
 from earthscope import config
-from earthscope.charts import trend_figure
+from earthscope.charts import comparison_figure, trend_figure
 from earthscope.explanations import (
     AUDIENCES, GLOSSARY, LIMITATIONS, describe_agreement, describe_trend,
     explain_for_audience, format_pvalue, format_signed,
@@ -22,7 +27,7 @@ from earthscope.statistics import (
     RobustTrend, TrendResult, calculate_linear_trend, calculate_robust_trend,
 )
 
-st.set_page_config(page_title="EarthScope", page_icon="🌍", layout="wide")
+st.set_page_config(page_title="EarthScope | Ocean Observatory", page_icon="🌍", layout="wide")
 
 
 @dataclass
@@ -83,50 +88,125 @@ def summary_row(a: Analysis) -> dict:
     }
 
 
+# ---------------------------------------------------------------- UI helpers
+def format_coord(lat: float, lon: float) -> str:
+    return f"{abs(lat):.4f}° {'N' if lat >= 0 else 'S'}, {abs(lon):.4f}° {'E' if lon >= 0 else 'W'}"
+
+
+def kpi_card(column, label: str, value: str, note: str) -> None:
+    """One summary card. Values wrap instead of being cut off."""
+    with column.container(border=True, height="stretch"):
+        st.caption(label)
+        st.html(
+            '<div style="font-size:1.45rem;font-weight:700;line-height:1.25;'
+            f'overflow-wrap:anywhere;">{html.escape(value)}</div>'
+        )
+        st.caption(note)
+
+
+def kpi_row(a: Analysis, rate_unit: str, requested_years: int) -> None:
+    """Four cards: trend, period, confidence interval, significance."""
+    t = a.trend
+    cols = st.columns(4)
+    if t.ok:
+        low, high = t.ci_per_decade
+        direction = "Upward" if t.slope > 0 else "Downward" if t.slope < 0 else "Flat"
+        kpi_card(
+            cols[0], "Estimated trend", f"{format_signed(t.slope_per_decade)} {rate_unit}/decade",
+            f"{direction} · least-squares fit to annual means",
+        )
+        kpi_card(
+            cols[2], "95% confidence interval",
+            f"{format_signed(low)} to {format_signed(high)}",
+            f"{rate_unit}/decade · statistical uncertainty of the fitted trend only",
+        )
+        p_text = format_pvalue(t.pvalue)
+        kpi_card(
+            cols[3], "Statistical significance",
+            f"p {p_text}" if p_text[0] in "<>" else f"p = {p_text}",
+            "Significant at the 5% level under the model's assumptions" if t.significant
+            else "Not statistically significant at the 5% level",
+        )
+    else:
+        kpi_card(cols[0], "Estimated trend", "N/A", "Insufficient data for trend inference")
+        kpi_card(cols[2], "95% confidence interval", "N/A", "Not available")
+        kpi_card(cols[3], "Statistical significance", "N/A", "Not available")
+    span = f"{t.first_year}–{t.last_year}" if t.n else "no complete years"
+    kpi_card(
+        cols[1], "Period analyzed", f"{t.n} year{'s' if t.n != 1 else ''}",
+        f"{span} · complete years only ({t.n} of {requested_years} requested have all 12 months)",
+    )
+
+
+def data_notes(a: Analysis) -> None:
+    """Warnings, exclusions and the reason when no trend can be given."""
+    for warning in a.monthly.warnings:
+        st.warning(warning)
+    if a.dropped:
+        listed = ", ".join(f"{y} ({m}/12 months)" for y, m in sorted(a.dropped.items()))
+        st.info(
+            "Some years did not have all 12 valid monthly values and were excluded from "
+            f"the trend analysis: {listed}."
+        )
+    if not a.trend.ok:
+        st.warning(f"**Insufficient data for trend inference.** {a.trend.reason}")
+
+
+def explainer(a: Analysis, variable_label: str, rate_unit: str, key: str) -> None:
+    audience = st.segmented_control(
+        "Reading level", AUDIENCES, default="General public", key=f"audience_{key}",
+    ) or "General public"
+    st.write(explain_for_audience(audience, a.trend, a.robust, a.monthly.location, variable_label, rate_unit))
+    st.caption(
+        "App-generated explanation: fixed wording filled with the computed results above. "
+        "No AI model is involved."
+    )
+
+
 # ---------------------------------------------------------------- sidebar
 latest_year = config.last_complete_year()
-with st.sidebar.form("controls"):
-    st.header("Investigation")
-    location_options = list(config.LOCATIONS) + [config.CUSTOM_LABEL]
+location_options = list(config.LOCATIONS) + [config.CUSTOM_LABEL]
 
-    def option_label(name: str) -> str:
-        loc = config.LOCATIONS.get(name)
-        return f"{name} (outside the Caribbean)" if loc and not loc.caribbean else name
 
-    location_name = st.selectbox(
-        "Location", location_options,
-        index=location_options.index(config.DEFAULT_LOCATION), format_func=option_label,
-    )
-    compare_options = ["None"] + location_options
-    compare_name = st.selectbox(
-        "Compare with (optional)", compare_options,
-        index=compare_options.index(config.DEFAULT_COMPARISON), format_func=option_label,
-    )
-    with st.expander("Custom coordinates"):
-        st.caption(f"Used only when “{config.CUSTOM_LABEL}” is selected above.")
-        custom_lat = st.number_input(
-            "Latitude (°, north positive)", -90.0, 90.0, config.DEFAULT_CUSTOM_POINT[0],
-            step=0.5, format="%.4f",
+def option_label(name: str) -> str:
+    loc = config.LOCATIONS.get(name)
+    return f"{name} (outside the Caribbean)" if loc and not loc.caribbean else name
+
+
+with st.sidebar:
+    st.markdown("## EarthScope")
+    st.caption("OCEAN OBSERVATORY  \nAnalyze environmental change across the Caribbean.")
+    with st.form("controls"):
+        st.markdown("**Analysis settings**")
+        location_name = st.selectbox(
+            "Location", location_options,
+            index=location_options.index(config.DEFAULT_LOCATION), format_func=option_label,
         )
-        custom_lon = st.number_input(
-            "Longitude (°, east positive)", -180.0, 180.0, config.DEFAULT_CUSTOM_POINT[1],
-            step=0.5, format="%.4f",
+        compare_options = ["None"] + location_options
+        compare_name = st.selectbox(
+            "Compare with (optional)", compare_options,
+            index=compare_options.index(config.DEFAULT_COMPARISON), format_func=option_label,
         )
-    variable_key = st.selectbox(
-        "Variable", list(config.VARIABLES),
-        format_func=lambda k: f"{config.VARIABLES[k].label} ({config.VARIABLES[k].unit})",
-    )
-    start_year, end_year = st.slider(
-        "Years", config.FIRST_AVAILABLE_YEAR, latest_year,
-        (config.DEFAULT_START_YEAR, latest_year),
-        help="Only fully completed calendar years can be selected.",
-    )
-    st.form_submit_button("Analyze", type="primary", width="stretch")
-st.sidebar.caption(
-    "EarthScope focuses on the Caribbean. Preset points are approximate city "
-    "coordinates used to pick a NASA model grid cell. They are not weather stations, "
-    "and a result for one cell is not a national or regional average."
-)
+        with st.expander("Custom coordinates"):
+            st.caption(f"Used only when “{config.CUSTOM_LABEL}” is selected above.")
+            custom_lat = st.number_input(
+                "Latitude (°, north positive)", -90.0, 90.0, config.DEFAULT_CUSTOM_POINT[0],
+                step=0.5, format="%.4f",
+            )
+            custom_lon = st.number_input(
+                "Longitude (°, east positive)", -180.0, 180.0, config.DEFAULT_CUSTOM_POINT[1],
+                step=0.5, format="%.4f",
+            )
+        variable_key = st.selectbox(
+            "Variable", list(config.VARIABLES),
+            format_func=lambda k: f"{config.VARIABLES[k].label} ({config.VARIABLES[k].unit})",
+        )
+        start_year, end_year = st.slider(
+            "Years", config.FIRST_AVAILABLE_YEAR, latest_year,
+            (config.DEFAULT_START_YEAR, latest_year),
+            help="Only fully completed calendar years can be selected.",
+        )
+        st.form_submit_button("Analyze trends", type="primary", width="stretch")
 
 
 def resolve(name: str) -> config.Location:
@@ -137,29 +217,51 @@ def resolve(name: str) -> config.Location:
 
 
 variable = config.VARIABLES[variable_key]
-
-# ---------------------------------------------------------------- header
-st.title("EarthScope — Earth System Trend Detective")
-st.write(
-    "Investigate historical environmental change using NASA POWER data: what is "
-    "changing, where, how fast, and whether the trend is statistically significant."
-)
-
 selected = [resolve(location_name)]
+same_point_note = False
 if compare_name != "None":
     other = resolve(compare_name)
     if (other.latitude, other.longitude) == (selected[0].latitude, selected[0].longitude):
-        st.info("The comparison location is the same as the main location, so it is not shown twice.")
+        same_point_note = True
     else:
         selected.append(other)
 
+# ---------------------------------------------------------------- header
+context_line = f"{selected[0].name} · {variable.label} · {start_year}–{end_year}"
+st.html(
+    f"""
+<div style="background:linear-gradient(110deg,#07142D 0%,#0B1736 55%,#123B5C 100%);
+            color:#FFFFFF;border-radius:12px;padding:20px 26px;display:flex;flex-wrap:wrap;
+            gap:10px 28px;align-items:flex-end;justify-content:space-between;
+            border-left:6px solid #0893A3;">
+  <div>
+    <div style="font-size:0.78rem;letter-spacing:0.12em;text-transform:uppercase;color:#9FD8E0;">
+      Ocean Observatory · Caribbean climate explorer</div>
+    <h1 style="margin:2px 0 2px 0;padding:0;font-size:2.3rem;line-height:1.15;color:#FFFFFF;">EarthScope</h1>
+    <div style="font-size:1.05rem;color:#E6EEF7;">Understand how our climate is changing.</div>
+  </div>
+  <div style="text-align:right;font-size:0.9rem;color:#E6EEF7;">
+    <div style="font-weight:600;color:#FFFFFF;">{html.escape(context_line)}</div>
+    <div>Data: NASA POWER · model-derived estimates</div>
+  </div>
+</div>
+"""
+)
+st.caption(
+    "Explore NASA model-derived environmental data, visualize long-term changes, and "
+    "understand what the trends do, and do not, tell us."
+)
+if same_point_note:
+    st.info("The comparison location is the same as the main location, so it is not shown twice.")
+
+# ---------------------------------------------------------------- data
 analyses: list[Analysis] = []
 with st.spinner("Requesting data from NASA POWER…"):
     for loc in selected:
         try:
             analyses.append(analyze(loc, start_year, end_year, variable_key))
         except PowerError as exc:
-            st.error(f"**{loc.name}:** {exc}")
+            st.error(f"**{loc.name}:** {exc} Adjust the settings or press **Analyze trends** to retry.")
         except Exception:  # never show a stack trace to the user
             st.error(f"**{loc.name}:** an unexpected problem occurred while preparing the data.")
 
@@ -170,139 +272,180 @@ if not analyses:
     )
     st.stop()
 
-unit = analyses[0].monthly.unit or variable.unit
+primary = analyses[0]
+unit = primary.monthly.unit or variable.unit
 rate_unit = variable.rate_unit  # unit used for rates of change
-st.caption(
-    f"Source: NASA POWER monthly API / MERRA-2 reanalysis · {variable.label} "
-    f"(`{variable_key}`, {unit}) · requested {start_year}–{end_year}  \n"
-    "Every result below is a model-derived estimate for a single grid cell, not a "
-    "national, Caribbean-wide or global average."
+requested_years = end_year - start_year + 1
+slug = "_".join(
+    [re.sub(r"[^A-Za-z0-9]+", "-", primary.monthly.location).strip("-"), variable_key, f"{start_year}-{end_year}"]
 )
-
-# ---------------------------------------------------------------- results
-for a in analyses:
-    t = a.trend
-    st.subheader(a.monthly.location)
-    for warning in a.monthly.warnings:
-        st.warning(warning)
-    if a.annual.empty:
-        st.warning(
-            "No year in this range has all 12 valid monthly values, so there is nothing "
-            "to plot or analyze. Try a different range."
-        )
-        continue
-
-    cols = st.columns(4)
-    if t.ok:
-        low, high = t.ci_per_decade
-        cols[0].metric(
-            f"Trend ({rate_unit}/decade)", format_signed(t.slope_per_decade),
-            help=f"95% confidence interval: {format_signed(low)} to {format_signed(high)} {rate_unit}/decade",
-        )
-        cols[1].metric("p-value", format_pvalue(t.pvalue), help="Two-sided test of a zero slope.")
-        cols[2].metric("R²", f"{t.r_squared:.2f}", help="Share of year-to-year variance described by the line.")
-    else:
-        cols[0].metric(f"Trend ({rate_unit}/decade)", "n/a")
-        cols[1].metric("p-value", "n/a")
-        cols[2].metric("R²", "n/a")
-    cols[3].metric(
-        "Complete years", f"{t.n} of {end_year - start_year + 1}",
-        help=f"Coverage {t.first_year}–{t.last_year}. Years without 12 valid months are excluded.",
-    )
-    if t.ok:
-        st.caption(
-            f"95% CI for the slope: {format_signed(low)} to {format_signed(high)} {rate_unit}/decade "
-            f"· coverage {t.first_year}–{t.last_year}"
-        )
-    st.markdown(describe_trend(t, a.monthly.location, variable.label, rate_unit))
-
-    r = a.robust
-    if t.ok and r.ok:
-        r_low, r_high = r.sen_ci_per_decade
-        st.markdown("**Robust check** (a second method, less sensitive to unusual years)")
-        rcols = st.columns(4)
-        rcols[0].metric(
-            f"Theil–Sen trend ({rate_unit}/decade)", format_signed(r.sen_slope_per_decade),
-            help="Median of the slopes between every pair of years.",
-        )
-        rcols[1].metric(
-            "Mann–Kendall p-value", format_pvalue(r.mk_pvalue),
-            help="Tests for a consistent rise or fall without assuming a straight line.",
-        )
-        rcols[2].metric(
-            "Kendall's τ", f"{r.mk_tau:.2f}",
-            help="From −1 (always falling) to +1 (always rising); 0 means no consistent direction.",
-        )
-        st.caption(
-            f"95% CI for the Theil–Sen slope: {format_signed(r_low)} to {format_signed(r_high)} "
-            f"{rate_unit}/decade. {describe_agreement(t, r)}"
-        )
-
-    with st.expander("Explain this result", expanded=True):
-        audience = st.radio(
-            "Explain it for", AUDIENCES, index=1, horizontal=True,
-            key=f"audience_{a.monthly.location}",
-        )
-        st.write(explain_for_audience(audience, t, r, a.monthly.location, variable.label, rate_unit))
-        st.caption("Written from the computed numbers above using fixed wording; no AI model is involved.")
-    if a.dropped:
-        listed = ", ".join(f"{y} ({m}/12 months)" for y, m in sorted(a.dropped.items()))
-        st.info(f"Years excluded because they lack 12 valid monthly values: {listed}.")
-
-plotted = [(a.monthly.location, a.annual, a.trend) for a in analyses if not a.annual.empty]
-if plotted:
-    st.subheader(f"Annual mean {variable.label}")
-    st.plotly_chart(trend_figure(plotted, variable.label, unit), width="stretch")
-    st.caption("Dashed lines are least-squares fits over the observed years only; nothing is extrapolated.")
-
+annual_all = pd.concat([a.annual for a in analyses], ignore_index=True)
+annual_csv = annual_all.to_csv(index=False).encode("utf-8-sig")
 summary = pd.DataFrame([summary_row(a) for a in analyses])
+
+# ---------------------------------------------------------------- main result
+st.subheader(primary.monthly.location, anchor="results")
+st.caption(
+    f"{variable.label.capitalize()} (`{variable_key}`, {unit}) · requested {start_year}–{end_year} · "
+    "a model-derived estimate for one grid cell, not a national, Caribbean-wide or global average."
+)
+kpi_row(primary, rate_unit, requested_years)
+data_notes(primary)
+
+if primary.annual.empty:
+    st.warning(
+        "No year in this range has all 12 valid monthly values, so there is nothing "
+        "to plot or analyze. Try a different range."
+    )
+else:
+    chart_col, context_col = st.columns([2.3, 1])
+    with chart_col.container(border=True):
+        st.markdown(f"**Annual mean {variable.label}**")
+        st.caption(
+            f"{primary.monthly.location} · {primary.trend.first_year}–{primary.trend.last_year} · "
+            "model-derived annual values"
+        )
+        st.plotly_chart(
+            trend_figure(primary.annual, primary.trend, variable.label, unit),
+            width="stretch", theme=None,
+        )
+        st.caption(
+            "Solid line: annual means computed from NASA POWER monthly values. Dashed line: "
+            "least-squares fit over the analyzed years only; nothing is extrapolated. The "
+            "vertical axis does not start at zero."
+        )
+    with context_col.container(border=True):
+        m = primary.monthly
+        st.markdown("**Location context**")
+        st.caption("Model-derived grid cell, not a local thermometer.")
+        st.markdown(f"**{m.location}**  \n{format_coord(m.latitude, m.longitude)}")
+        st.map(
+            pd.DataFrame({"lat": [m.latitude], "lon": [m.longitude]}),
+            latitude="lat", longitude="lon", zoom=4, size=20000, color="#F28C52", height=230,
+        )
+        st.caption(
+            "The marker shows the requested coordinates. Values describe the surrounding "
+            "NASA model grid cell, roughly 50 km across; there is no sensor at this point."
+        )
+        st.caption(
+            f"Source: NASA POWER ({', '.join(m.sources) or 'source not stated'}) · "
+            f"retrieved {m.accessed_utc}"
+        )
+
+    with st.container(border=True):
+        st.markdown("#### What does this mean?")
+        explainer(primary, variable.label, rate_unit, "primary")
+
+    with st.container(border=True):
+        t, r = primary.trend, primary.robust
+        st.markdown("**Statistical detail and robust check**")
+        st.markdown(describe_trend(t, primary.monthly.location, variable.label, rate_unit))
+        if t.ok and r.ok:
+            r_low, r_high = r.sen_ci_per_decade
+            rcols = st.columns(4)
+            rcols[0].metric(
+                f"Theil–Sen trend ({rate_unit}/decade)", format_signed(r.sen_slope_per_decade),
+                help="A second estimate: the median of the slopes between every pair of years.",
+            )
+            rcols[1].metric(
+                "Mann–Kendall p-value", format_pvalue(r.mk_pvalue),
+                help="Tests for a consistent rise or fall without assuming a straight line.",
+            )
+            rcols[2].metric(
+                "Kendall's τ", f"{r.mk_tau:.2f}",
+                help="From −1 (always falling) to +1 (always rising); 0 means no consistent direction.",
+            )
+            rcols[3].metric(
+                "R² (linear fit)", f"{t.r_squared:.2f}",
+                help="Share of year-to-year variation described by the straight line.",
+            )
+            st.caption(
+                f"95% CI for the Theil–Sen slope: {format_signed(r_low)} to {format_signed(r_high)} "
+                f"{rate_unit}/decade. {describe_agreement(t, r)}"
+            )
+
+# ---------------------------------------------------------------- comparison
 if len(analyses) > 1:
-    st.subheader("Comparison")
+    st.subheader("Compare locations", anchor="compare")
+    st.caption(
+        f"Same variable ({variable.label}) and the same requested period ({start_year}–{end_year}) "
+        "for both locations."
+    )
+    # Compare the exact years analyzed: the same span and count can still hide different gaps.
+    coverage = {frozenset(a.annual["year"].astype(int)) for a in analyses}
+    if len(coverage) > 1:
+        st.warning(
+            "The locations do not have the same complete years, so their trends cover "
+            "different periods and are not directly comparable."
+        )
     table = pd.DataFrame(
         {
             "Location": summary["location"],
             "Coverage": [
-                f"{r.first_year}–{r.last_year} ({r.complete_years} yrs)" if r.complete_years else "none"
-                for r in summary.itertuples()
+                f"{row.first_year}–{row.last_year} ({row.complete_years} yrs)" if row.complete_years else "none"
+                for row in summary.itertuples()
             ],
             f"Trend ({rate_unit}/decade)": summary["slope_per_decade"].map(
                 lambda v: format_signed(v) if pd.notna(v) else "n/a"
             ),
             f"95% CI ({rate_unit}/decade)": [
-                f"{format_signed(r.ci95_low_per_decade)} to {format_signed(r.ci95_high_per_decade)}"
-                if pd.notna(r.ci95_low_per_decade) else "n/a"
-                for r in summary.itertuples()
+                f"{format_signed(row.ci95_low_per_decade)} to {format_signed(row.ci95_high_per_decade)}"
+                if pd.notna(row.ci95_low_per_decade) else "n/a"
+                for row in summary.itertuples()
             ],
             "p-value": [format_pvalue(p) if pd.notna(p) else "n/a" for p in summary["p_value"]],
             "R²": summary["r_squared"].map(lambda v: f"{v:.2f}" if pd.notna(v) else "n/a"),
             "Significant at 5%": summary["significant_at_5pct"].map(
                 {True: "Yes", False: "No"}
             ).fillna("n/a"),
+            f"Theil–Sen ({rate_unit}/decade)": summary["theil_sen_slope_per_decade"].map(
+                lambda v: format_signed(v) if pd.notna(v) else "n/a"
+            ),
         }
     )
     st.dataframe(table, hide_index=True, width="stretch")
+
+    plotted = [(a.monthly.location, a.annual, a.trend) for a in analyses if not a.annual.empty]
+    if len(plotted) > 1:
+        with st.container(border=True):
+            st.markdown(f"**Annual mean {variable.label}: both locations**")
+            st.plotly_chart(comparison_figure(plotted, variable.label, unit), width="stretch", theme=None)
+            st.caption(
+                "Colour identifies the location. Solid lines are annual means; dashed lines "
+                "are fitted trends."
+            )
     st.caption(
         "Each location is fitted independently. These are sampled grid-cell values, "
         "not national or regional averages. EarthScope does not test whether the two "
-        "slopes differ from each other. Comparing with a single point outside the "
+        "slopes differ from each other. Comparing selected locations does not establish "
+        "a Caribbean-wide average, and comparing with a single point outside the "
         "Caribbean does not show how the region compares with the world."
     )
 
+    for index, other_analysis in enumerate(analyses[1:], start=1):
+        with st.container(border=True):
+            st.markdown(f"#### {other_analysis.monthly.location}")
+            st.caption(format_coord(other_analysis.monthly.latitude, other_analysis.monthly.longitude))
+            kpi_row(other_analysis, rate_unit, requested_years)
+            data_notes(other_analysis)
+            if not other_analysis.annual.empty:
+                explainer(other_analysis, variable.label, rate_unit, f"compare_{index}")
+
 # ---------------------------------------------------------------- downloads
-st.subheader("Download")
-annual_all = pd.concat([a.annual for a in analyses], ignore_index=True)
-slug = f"{variable_key}_{start_year}-{end_year}"
+st.subheader("Download the data", anchor="download")
 left, right = st.columns(2)
 left.download_button(
-    "Download annual CSV", annual_all.to_csv(index=False).encode("utf-8-sig"),
-    file_name=f"earthscope_annual_{slug}.csv", mime="text/csv", disabled=annual_all.empty,
+    "Download annual CSV", annual_csv, file_name=f"earthscope_annual_{slug}.csv",
+    mime="text/csv", disabled=annual_all.empty, width="stretch",
 )
 right.download_button(
-    "Download summary CSV", summary.to_csv(index=False).encode("utf-8-sig"),
-    file_name=f"earthscope_summary_{slug}.csv", mime="text/csv",
+    "Download trend summary CSV", summary.to_csv(index=False).encode("utf-8-sig"),
+    file_name=f"earthscope_summary_{slug}.csv", mime="text/csv", width="stretch",
 )
+st.caption("The annual CSV holds exactly the values plotted above; the summary CSV holds every statistic shown.")
 
-# ---------------------------------------------------------------- expanders
+# ---------------------------------------------------------------- about / methods
+st.subheader("About the data", anchor="about-the-data")
 with st.expander("Data provenance"):
     for a in analyses:
         m = a.monthly
@@ -324,7 +467,11 @@ with st.expander("Data provenance"):
     st.markdown(f"Documentation: [NASA POWER Monthly & Annual API]({config.POWER_DOCS_URL})")
     st.dataframe(annual_all, hide_index=True, width="stretch")
 
-with st.expander("How we computed the trend"):
+with st.expander("What do these terms mean?"):
+    st.markdown("\n".join(f"- **{term}:** {meaning}" for term, meaning in GLOSSARY.items()))
+
+st.subheader("Methods & limitations", anchor="methods")
+with st.expander("How were these results calculated?"):
     st.markdown(
         f"""
 1. Monthly `{variable_key}` values are requested from the NASA POWER monthly point API.
@@ -344,9 +491,6 @@ with st.expander("How we computed the trend"):
                 "suggest the p-value and interval are optimistic)."
             )
 
-with st.expander("What do these terms mean?"):
-    st.markdown("\n".join(f"- **{term}:** {meaning}" for term, meaning in GLOSSARY.items()))
-
 with st.expander("Limitations and how to interpret this"):
     st.markdown("\n".join(f"- {item}" for item in LIMITATIONS))
 
@@ -357,4 +501,31 @@ with st.expander("AI assistance acknowledgment"):
         "run time; none are generated by an AI model. EarthScope is a NASA Space Apps "
         "Challenge 2026 project by team Bajan Chief and is not a NASA product or "
         "endorsed by NASA."
+    )
+
+st.divider()
+st.caption(
+    "EarthScope · Bajan Chief · NASA Space Apps Challenge 2026 · Independently developed "
+    "participant project. Uses NASA POWER data; not affiliated with or endorsed by NASA."
+)
+
+# ---------------------------------------------------------------- sidebar (after results)
+with st.sidebar:
+    sections = ["[Results](#results)"]
+    if len(analyses) > 1:
+        sections.append("[Compare locations](#compare)")
+    sections += ["[Download the data](#download)", "[About the data](#about-the-data)", "[Methods & limitations](#methods)"]
+    st.markdown("**Sections**  \n" + "  \n".join(sections))
+    st.markdown(
+        f"**Data source**  \n[NASA POWER]({config.POWER_DOCS_URL})  \n"
+        "MERRA-2 reanalysis (model), grid cells roughly 50 km across"
+    )
+    st.download_button(
+        "Download annual CSV", annual_csv, file_name=f"earthscope_annual_{slug}.csv",
+        mime="text/csv", disabled=annual_all.empty, width="stretch", key="sidebar_csv",
+    )
+    st.caption(
+        "Preset points are approximate city coordinates used to pick a NASA model grid "
+        "cell. They are not weather stations, and a result for one cell is not a "
+        "national or regional average."
     )

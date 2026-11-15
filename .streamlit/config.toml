@@ -1,0 +1,19 @@
+# EarthScope "Ocean Observatory" theme: navy sidebar, light content area.
+[theme]
+base = "light"
+primaryColor = "#167E97"
+backgroundColor = "#F5F8FC"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#10233D"
+borderColor = "#D8E2EC"
+font = "sans-serif"
+
+[theme.sidebar]
+backgroundColor = "#0B1736"
+secondaryBackgroundColor = "#112447"
+textColor = "#FFFFFF"
+primaryColor = "#167E97"
+borderColor = "#2A3F66"
+
+[browser]
+gatherUsageStats = false

@@ -1,5 +1,7 @@
 # EarthScope — Earth System Trend Detective
 
+![EarthScope showing the Bridgetown, Barbados temperature trend](docs/screenshot.png)
+
 A NASA Space Apps Challenge 2026 project by team **Bajan Chief** for the challenge
 [Be An Earth System Trend Detective!](https://www.spaceappschallenge.org/2026/challenges/earth-system-trend-detective/)
 
@@ -51,10 +53,11 @@ Run the tests:
 | "Explain this result" for a student, the general public or a scientist (fixed wording, no AI) | Implemented |
 | Glossary of statistical terms | Implemented |
 | Interactive chart of annual means with fitted trend line | Implemented |
+| "Ocean Observatory" interface: summary cards, location panel with map pin, navy sidebar theme | Implemented |
 | Two-location comparison chart and table | Implemented |
 | Annual-data CSV and trend-summary CSV downloads | Implemented |
 | Provenance, method, limitations and AI-assistance panels | Implemented |
-| Map, file upload, public deployment | Not implemented (see [docs/FUTURE_WORK.md](docs/FUTURE_WORK.md)) |
+| Regional map layers, file upload, public deployment | Not implemented (see [docs/FUTURE_WORK.md](docs/FUTURE_WORK.md)) |
 
 ## Example result
 
@@ -116,6 +119,7 @@ Full details: [docs/DATA_METHODS.md](docs/DATA_METHODS.md).
 
 ```text
 app.py                  Streamlit interface
+.streamlit/config.toml  colour theme
 earthscope/config.py    locations, variables, API settings
 earthscope/nasa_power.py  request, validation and parsing
 earthscope/processing.py  annual aggregation
