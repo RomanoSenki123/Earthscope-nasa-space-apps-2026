@@ -123,7 +123,7 @@ Results on 14 November 2026 for `T2M`, 1991–2025:
 
 ## Plain-language explanations
 
-The "Explain this result" panel offers wording for a student, the general public
+The "What does this mean?" panel offers wording for a student, the general public
 or a scientist. The text is produced from fixed templates filled with the computed
 numbers. No AI model is called by the app.
 

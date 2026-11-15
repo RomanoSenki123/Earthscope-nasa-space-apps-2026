@@ -1,5 +1,8 @@
 # Project description (draft)
 
+**Live app:** <https://earthscope-nasa-space-apps-2026-uyrq7wj4hhc3zopix9dr6r.streamlit.app/>  
+**Source code:** <https://github.com/RomanoSenki123/Earthscope-nasa-space-apps-2026>
+
 ## The problem
 
 NASA publishes decades of Earth-system data, but for most people it is hard to go
@@ -16,13 +19,13 @@ challenge:
 - **How much?** The app reports the linear trend per decade with a 95% confidence interval.
 - **Is it significant?** The app reports the p-value and R², and states in plain language whether the trend is statistically significant at the 5% level. It then cross-checks the answer with a second, robust method (Theil–Sen slope and Mann–Kendall test) and says whether the two agree.
 
-To keep it approachable for non-specialists, an "Explain this result" panel
+To keep it approachable for non-specialists, a "What does this mean?" panel
 rewrites the finding for a student, the general public or a scientist, and a
 glossary defines each statistical term. This wording comes from fixed templates
 filled with the computed numbers; the app does not call an AI model.
 
-It also provides an interactive chart of annual means with the fitted trend line,
-a comparison table, CSV downloads of the annual data and the trend summary, and
+It also provides four summary cards, an interactive chart of annual means with
+the fitted trend line, a location panel with a map pin, a comparison table and chart, CSV downloads of the annual data and the trend summary, and
 panels covering data provenance, the method, and limitations.
 
 ## How it works
@@ -69,8 +72,8 @@ which is not statistically significant by either method (Mann–Kendall p = 0.21
 
 ## Not yet implemented
 
-Map view, additional variables, regional or global averages,
-autocorrelation-adjusted uncertainty, and a hosted public deployment.
+A map of all locations, additional variables, regional or global averages,
+and autocorrelation-adjusted uncertainty.
 
 ## Tools
 

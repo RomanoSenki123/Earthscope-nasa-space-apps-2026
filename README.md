@@ -1,5 +1,7 @@
 # EarthScope — Earth System Trend Detective
 
+**Live app:** <https://earthscope-nasa-space-apps-2026-uyrq7wj4hhc3zopix9dr6r.streamlit.app/>
+
 ![EarthScope showing the Bridgetown, Barbados temperature trend](docs/screenshot.png)
 
 A NASA Space Apps Challenge 2026 project by team **Bajan Chief** for the challenge
@@ -50,14 +52,15 @@ Run the tests:
 | Annual means from complete 12-month years only; excluded years listed | Implemented |
 | Linear trend: slope per decade, 95% CI, p-value, R², sample size | Implemented |
 | Robust cross-check: Theil–Sen slope with 95% CI and Mann–Kendall test | Implemented |
-| "Explain this result" for a student, the general public or a scientist (fixed wording, no AI) | Implemented |
+| "What does this mean?" explanation for a student, the general public or a scientist (fixed wording, no AI) | Implemented |
 | Glossary of statistical terms | Implemented |
 | Interactive chart of annual means with fitted trend line | Implemented |
 | "Ocean Observatory" interface: summary cards, location panel with map pin, navy sidebar theme | Implemented |
 | Two-location comparison chart and table | Implemented |
 | Annual-data CSV and trend-summary CSV downloads | Implemented |
 | Provenance, method, limitations and AI-assistance panels | Implemented |
-| Regional map layers, file upload, public deployment | Not implemented (see [docs/FUTURE_WORK.md](docs/FUTURE_WORK.md)) |
+| Public deployment on Streamlit Community Cloud | Implemented |
+| Regional map layers, file upload | Not implemented (see [docs/FUTURE_WORK.md](docs/FUTURE_WORK.md)) |
 
 ## Example result
 
@@ -83,7 +86,7 @@ Community Cloud as it is:
 3. Select the repository, branch `main`, and main file `app.py`. Under advanced settings pick Python 3.11 or newer.
 4. Deploy, then open the URL in a private browser window and confirm that the default Bridgetown view loads real data.
 
-No live URL exists yet. Add it here only after it has been verified.
+The app is deployed at <https://earthscope-nasa-space-apps-2026-uyrq7wj4hhc3zopix9dr6r.streamlit.app/> (verified reachable without signing in on 15 November 2026). It redeploys automatically when `main` is updated.
 
 ## Data source
 

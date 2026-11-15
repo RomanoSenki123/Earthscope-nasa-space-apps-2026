@@ -2,7 +2,6 @@
 
 Not implemented in the hackathon build:
 
-- **Public deployment** (for example Streamlit Community Cloud). Needs the team lead's approval and a public repository.
 - **Map of all locations** with their trends (the app currently shows a single pin for the selected point).
 - **Upload of a user's own NASA POWER file** as an offline fallback when the API is unreachable.
 - **More variables**, each with its own correct aggregation (precipitation needs totals, not means).
